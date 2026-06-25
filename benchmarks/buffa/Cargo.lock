@@ -61,7 +61,7 @@ checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
 name = "buffa"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "base64",
  "bytes",
@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "buffa-build"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "buffa",
  "buffa-codegen",
@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "buffa-codegen"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "buffa",
  "buffa-descriptor",
@@ -99,7 +99,7 @@ dependencies = [
 
 [[package]]
 name = "buffa-descriptor"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "buffa",
  "rustversion",
@@ -637,9 +637,9 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
 name = "smoothutf8"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c038f4b87448b59ad444cc635982c920155805901ed6f86e679018eb1ec2b885"
+checksum = "36358427d32ecdb1624616deed99eccfef0a167fe5bf40ddb51efe6980bc1ec8"
 dependencies = [
  "simdutf8",
 ]

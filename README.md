@@ -60,7 +60,7 @@ These are gaps we intend to address in future releases:
 
 ## Semver and API stability
 
-Buffa is pre-1.0. We follow the [Rust community convention](https://doc.rust-lang.org/cargo/reference/semver.html) for 0.x crates: breaking changes increment the **minor** version (0.1.x → 0.2.0), additive changes increment the **patch** version (0.1.0 → 0.1.1). Pin to a minor version (`buffa = "0.7"`) to avoid surprises.
+Buffa is pre-1.0. We follow the [Rust community convention](https://doc.rust-lang.org/cargo/reference/semver.html) for 0.x crates: breaking changes increment the **minor** version (0.1.x → 0.2.0), additive changes increment the **patch** version (0.1.0 → 0.1.1). Pin to a minor version (`buffa = "0.8"`) to avoid surprises.
 
 The generated code API (struct shapes, `Message` trait, `MessageView` trait, `EnumValue`, `MessageField`) is considered the primary stability surface. Internal helper modules marked `#[doc(hidden)]` (`__private`, `__buffa_*` fields) may change at any time.
 
@@ -174,7 +174,7 @@ let decoded: MyMessage = serde_json::from_str(&json).unwrap();
 
 ## Performance
 
-Throughput comparison across five representative message types, measured on an Intel Xeon Platinum 8488C (x86_64) at buffa v0.7.1. Cross-implementation benchmarks run in Docker for toolchain consistency (`task bench-cross`). Higher is better.
+Throughput comparison across five representative message shapes, measured at buffa v0.8.0 on a quiesced bare-metal Intel Xeon Platinum 8488C (turbo disabled, `performance` governor, one core per implementation, median of five passes; full methodology in [`benchmarks/charts/README.md`](benchmarks/charts/README.md)). Higher is better.
 
 ### Binary decode
 
@@ -188,11 +188,11 @@ Throughput comparison across five representative message types, measured on an I
 
 | Message | buffa | buffa (view) | buffa (lazy) | prost | prost (bytes) | protobuf-v4 | Go |
 |---------|------:|------:|------:|------:|------:|------:|------:|
-| ApiResponse | 810 | 1,440 (+78%) | 1,361 (+68%) | 784 (−3%) | 671 (−17%) | 681 (−16%) | 268 (−67%) |
-| LogRecord | 757 | 2,056 (+172%) | 2,331 (+208%) | 686 (−9%) | 643 (−15%) | 796 (+5%) | 248 (−67%) |
-| AnalyticsEvent | 195 | 318 (+63%) | 18,307 (+9294%) | 251 (+29%) | 198 (+2%) | 338 (+73%) | 91 (−53%) |
-| GoogleMessage1 | 1,004 | 1,249 (+24%) | 1,860 (+85%) | 971 (−3%) | 910 (−9%) | 641 (−36%) | 339 (−66%) |
-| MediaFrame | 16,793 | 70,502 (+320%) | 66,856 (+298%) | 9,000 (−46%) | 21,511 (+28%) | 17,480 (+4%) | 1,264 (−92%) |
+| ApiResponse | 575 | 872 (+52%) | 912 (+59%) | 550 (−4%) | 546 (−5%) | 430 (−25%) | 175 (−70%) |
+| LogRecord | 572 | 1,336 (+134%) | 1,716 (+200%) | 481 (−16%) | 477 (−17%) | 555 (−3%) | 161 (−72%) |
+| AnalyticsEvent | 123 | 225 (+83%) | 11,873 (+9538%) | 148 (+20%) | 129 (+5%) | 222 (+80%) | 57 (−54%) |
+| GoogleMessage1 | 601 | 786 (+31%) | 1,452 (+142%) | 698 (+16%) | 669 (+11%) | 373 (−38%) | 263 (−56%) |
+| MediaFrame | 10,619 | 41,441 (+290%) | 40,678 (+283%) | 6,002 (−43%) | 18,432 (+74%) | 11,005 (+4%) | 1,890 (−82%) |
 
 </details>
 
@@ -208,11 +208,11 @@ Throughput comparison across five representative message types, measured on an I
 
 | Message | buffa | buffa (view) | buffa (lazy) | prost | prost (bytes) | protobuf-v4 | Go |
 |---------|------:|------:|------:|------:|------:|------:|------:|
-| ApiResponse | 2,616 | 2,490 (−5%) | 2,612 (−0%) | 1,788 (−32%) | — | 1,039 (−60%) | 559 (−79%) |
-| LogRecord | 4,226 | 4,678 (+11%) | 5,147 (+22%) | 3,251 (−23%) | — | 1,634 (−61%) | 304 (−93%) |
-| AnalyticsEvent | 594 | 606 (+2%) | 23,840 (+3912%) | 356 (−40%) | — | 517 (−13%) | 159 (−73%) |
-| GoogleMessage1 | 2,552 | 2,490 (−2%) | 3,330 (+30%) | 1,800 (−29%) | — | 898 (−65%) | 360 (−86%) |
-| MediaFrame | 42,959 | 46,369 (+8%) | 47,690 (+11%) | 36,852 (−14%) | — | 10,522 (−76%) | 1,681 (−96%) |
+| ApiResponse | 1,972 | 1,955 (−1%) | 1,959 (−1%) | 1,964 (−0%) | — | 639 (−68%) | 384 (−81%) |
+| LogRecord | 3,053 | 3,509 (+15%) | 3,587 (+17%) | 2,758 (−10%) | — | 1,067 (−65%) | 186 (−94%) |
+| AnalyticsEvent | 404 | 426 (+6%) | 12,960 (+3109%) | 238 (−41%) | — | 307 (−24%) | 105 (−74%) |
+| GoogleMessage1 | 2,122 | 2,123 (+0%) | 2,965 (+40%) | 1,816 (−14%) | — | 522 (−75%) | 232 (−89%) |
+| MediaFrame | 25,727 | 27,325 (+6%) | 27,441 (+7%) | 25,402 (−1%) | — | 6,671 (−74%) | 2,423 (−91%) |
 
 </details>
 
@@ -234,11 +234,11 @@ structs and then encoding them.
 
 | Message | buffa | buffa (view) |
 |---------|------:|------:|
-| ApiResponse | 754 | 1,612 (+114%) |
-| LogRecord | 494 | 2,865 (+480%) |
-| AnalyticsEvent | 524 | 1,106 (+111%) |
-| GoogleMessage1 | 899 | 1,187 (+32%) |
-| MediaFrame | 21,746 | 57,325 (+164%) |
+| ApiResponse | 639 | 1,224 (+91%) |
+| LogRecord | 315 | 2,447 (+678%) |
+| AnalyticsEvent | 267 | 802 (+200%) |
+| GoogleMessage1 | 673 | 900 (+34%) |
+| MediaFrame | 14,432 | 33,481 (+132%) |
 
 </details>
 
@@ -254,11 +254,11 @@ structs and then encoding them.
 
 | Message | buffa | prost | Go |
 |---------|------:|------:|------:|
-| ApiResponse | 781 | 789 (+1%) | 117 (−85%) |
-| LogRecord | 1,023 | 1,130 (+11%) | 139 (−86%) |
-| AnalyticsEvent | 713 | 788 (+10%) | 51 (−93%) |
-| GoogleMessage1 | 822 | 839 (+2%) | 126 (−85%) |
-| MediaFrame | 1,082 | 1,065 (−2%) | 213 (−80%) |
+| ApiResponse | 521 | 589 (+13%) | 70 (−87%) |
+| LogRecord | 697 | 882 (+27%) | 85 (−88%) |
+| AnalyticsEvent | 505 | 533 (+6%) | 33 (−94%) |
+| GoogleMessage1 | 571 | 674 (+18%) | 73 (−87%) |
+| MediaFrame | 702 | 937 (+33%) | 235 (−67%) |
 
 </details>
 
@@ -274,11 +274,11 @@ structs and then encoding them.
 
 | Message | buffa | prost | Go |
 |---------|------:|------:|------:|
-| ApiResponse | 663 | 289 (−56%) | 71 (−89%) |
-| LogRecord | 770 | 677 (−12%) | 111 (−86%) |
-| AnalyticsEvent | 263 | 234 (−11%) | 46 (−83%) |
-| GoogleMessage1 | 640 | 251 (−61%) | 72 (−89%) |
-| MediaFrame | 1,937 | 1,907 (−2%) | 272 (−86%) |
+| ApiResponse | 492 | 205 (−58%) | 40 (−92%) |
+| LogRecord | 530 | 424 (−20%) | 63 (−88%) |
+| AnalyticsEvent | 169 | 152 (−10%) | 25 (−85%) |
+| GoogleMessage1 | 413 | 171 (−59%) | 41 (−90%) |
+| MediaFrame | 1,235 | 1,218 (−1%) | 215 (−83%) |
 
 </details>
 
@@ -286,9 +286,9 @@ structs and then encoding them.
 
 **Libraries:** prost 0.13 + pbjson 0.7, protobuf‑v4 (Google Rust/upb, v4.33.1), Go `google.golang.org/protobuf` v1.36.6. protobuf-v4 JSON is not included as it does not provide a JSON codec.
 
-**`prost (bytes)`** uses `prost-build`'s `.bytes(["."])` config so every proto `bytes` field is generated as `bytes::Bytes` instead of `Vec<u8>`, and decodes from a `bytes::Bytes` input to exercise `Bytes`' zero-copy `copy_to_bytes` slicing. The substitution only affects the decode path, so only decode numbers are reported — `prost (bytes)` encode tracks default `prost` by construction. On the four non-bytes messages, `prost (bytes)` tracks default `prost` within noise (and is slightly slower on `ApiResponse` where the per-message `Bytes::clone` refcount overhead isn't offset by any actual zero-copy). On `MediaFrame` it runs ~2.4× faster than default `prost` at decode, confirming that prost's feature does land when it has bytes fields to work with. buffa views are in a different regime again: they borrow directly from the input buffer for strings, bytes, and nested message bodies, so `buffa (view)` on `MediaFrame` is ~3× the `prost (bytes)` number and ~4× `buffa`'s own owned decode. Views also benefit on the four non-bytes messages, where prost's `bytes` feature is inert.
+**`prost (bytes)`** uses `prost-build`'s `.bytes(["."])` config so every proto `bytes` field is generated as `bytes::Bytes` instead of `Vec<u8>`, and decodes from a `bytes::Bytes` input to exercise `Bytes`' zero-copy `copy_to_bytes` slicing. The substitution only affects the decode path, so only decode numbers are reported — `prost (bytes)` encode tracks default `prost` by construction. On the four non-bytes messages, `prost (bytes)` tracks default `prost` within noise (and is slightly slower on `ApiResponse` where the per-message `Bytes::clone` refcount overhead isn't offset by any actual zero-copy). On `MediaFrame` it runs ~3.1× faster than default `prost` at decode, confirming that prost's feature does land when it has bytes fields to work with. buffa views are in a different regime again: they borrow directly from the input buffer for strings, bytes, and nested message bodies, so `buffa (view)` on `MediaFrame` is ~2.2× the `prost (bytes)` number and ~3.9× `buffa`'s own owned decode. Views also benefit on the four non-bytes messages, where prost's `bytes` feature is inert.
 
-**`buffa (lazy)`** is the opt-in `FooLazyView` family (`lazy_views(true)`): `decode_lazy` performs one non-recursive scan that records nested and repeated message fields as undecoded byte ranges, and the encode number re-encodes from that view, replaying the recorded ranges verbatim. On flat messages it tracks the eager view within noise, because there is nothing to defer. On nested-message-dominated payloads the deferral is the whole cost model — `AnalyticsEvent` decodes at ~18 GiB/s because the scan never enters the repeated `Property` sub-messages, and re-encodes at ~23 GiB/s because the deferred ranges are copied rather than re-serialized. These full-scan numbers are the *floor* of the lazy advantage: the family exists for partial-access workloads (read a few fields out of many large items), where skipping untouched sub-trees also skips their allocation entirely. The trade-off is deferred validation — malformed bytes in a deferred field surface on access rather than at decode — documented in [the guide](docs/guide.md).
+**`buffa (lazy)`** is the opt-in `FooLazyView` family (`lazy_views(true)`): `decode_lazy` performs one non-recursive scan that records nested and repeated message fields as undecoded byte ranges, and the encode number re-encodes from that view, replaying the recorded ranges verbatim. On flat messages it tracks the eager view within noise, because there is nothing to defer. On nested-message-dominated payloads the deferral is the whole cost model — `AnalyticsEvent` decodes at ~12 GiB/s because the scan never enters the repeated `Property` sub-messages, and re-encodes at ~13 GiB/s because the deferred ranges are copied rather than re-serialized. These full-scan numbers are the *floor* of the lazy advantage: the family exists for partial-access workloads (read a few fields out of many large items), where skipping untouched sub-trees also skips their allocation entirely. The trade-off is deferred validation — malformed bytes in a deferred field surface on access rather than at decode — documented in [the guide](docs/guide.md).
 
 **Owned decode trade-offs:** buffa's owned decode is typically within ±10% of prost, trading a small throughput cost for features prost omits: unknown-field preservation by default, typed `EnumValue<E>` wrappers (not raw `i32`), and a type-stable decode loop that supports recursive message types without manual boxing. The zero-copy view path (`MyMessageView::decode_view`) sidesteps allocation entirely and is the recommended fast decode path. protobuf-v4's decode advantage on deeply-nested messages comes from upb's arena allocator — all sub-messages are bump-allocated in one arena rather than individually boxed.
 
@@ -296,7 +296,7 @@ structs and then encoding them.
 
 Reflection lets a CEL evaluator, a transcoding gateway, or a generic interceptor encode, decode, and serialize messages it has no generated type for. buffa offers two implementations, selected with `reflect_mode`: **bridge** keeps generated code small (`foo.reflect()` re-encodes the typed message and decodes the bytes into a `DynamicMessage`), while **vtable** — the default when reflection is enabled — implements `ReflectMessage` directly on the generated types so `foo.reflect()` borrows `foo` in place, with no round-trip. Both hand out the same `&dyn ReflectMessage`, so the call site does not change between modes.
 
-These charts measure the genericity tax against the generated codec. Only the four code-generated benchmark messages are covered, because reflection needs a generated type to compare against; `MediaFrame` is omitted. They are generated from a native `cargo criterion --bench reflect` run on the same host as the cross-implementation charts, but outside the Docker harness, so read them as a buffa-internal comparison (generated vs. reflect vs. view vs. vtable) rather than against the numbers in the sections above.
+These charts measure the genericity tax against the generated codec. Only the four code-generated benchmark messages are covered, because reflection needs a generated type to compare against; `MediaFrame` is omitted. They are produced by the same bare-metal run as the cross-implementation charts above (the `reflect` bench binary runs alongside buffa's), so read them as a buffa-internal comparison (generated vs. reflect vs. view vs. vtable) on the same scale.
 
 #### Decode
 
@@ -333,10 +333,10 @@ The interceptor / field-mask workload: take a wire payload, obtain a reflective 
 
 | Message | generated | reflect | view |
 |---------|------:|------:|------:|
-| ApiResponse | 790 | 304 (−62%) | 1,350 (+71%) |
-| LogRecord | 746 | 467 (−37%) | 1,824 (+145%) |
-| AnalyticsEvent | 204 | 84 (−59%) | 292 (+43%) |
-| GoogleMessage1 | 974 | 210 (−78%) | 1,167 (+20%) |
+| ApiResponse | 605 | 247 (−59%) | 914 (+51%) |
+| LogRecord | 596 | 315 (−47%) | 1,364 (+129%) |
+| AnalyticsEvent | 135 | 53 (−61%) | 224 (+66%) |
+| GoogleMessage1 | 725 | 195 (−73%) | 746 (+3%) |
 
 </details>
 
@@ -344,10 +344,10 @@ The interceptor / field-mask workload: take a wire payload, obtain a reflective 
 
 | Message | vtable | bridge | dynamic |
 |---------|------:|------:|------:|
-| ApiResponse | 894 (+475%) | 155 | 229 (+47%) |
-| LogRecord | 1,536 (+719%) | 188 | 359 (+91%) |
-| AnalyticsEvent | 290 (+466%) | 51 | 85 (+65%) |
-| GoogleMessage1 | 656 (+375%) | 138 | 156 (+13%) |
+| ApiResponse | 784 (+586%) | 114 | 186 (+63%) |
+| LogRecord | 1,221 (+763%) | 141 | 283 (+100%) |
+| AnalyticsEvent | 224 (+576%) | 33 | 54 (+64%) |
+| GoogleMessage1 | 471 (+300%) | 118 | 142 (+21%) |
 
 </details>
 
@@ -355,10 +355,10 @@ The interceptor / field-mask workload: take a wire payload, obtain a reflective 
 
 | Message | generated | reflect |
 |---------|------:|------:|
-| ApiResponse | 2,307 | 741 (−68%) |
-| LogRecord | 4,066 | 1,268 (−69%) |
-| AnalyticsEvent | 558 | 109 (−80%) |
-| GoogleMessage1 | 2,516 | 372 (−85%) |
+| ApiResponse | 1,946 | 476 (−76%) |
+| LogRecord | 3,055 | 885 (−71%) |
+| AnalyticsEvent | 397 | 71 (−82%) |
+| GoogleMessage1 | 2,127 | 223 (−90%) |
 
 </details>
 
