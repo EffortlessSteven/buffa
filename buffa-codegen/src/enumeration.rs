@@ -209,7 +209,7 @@ pub fn generate_enum(
     // The default value of an enum type is its first declared value. For
     // open enums the spec additionally requires that first value to be 0, so
     // `first_variant` is correct for proto2, proto3, and editions alike —
-    // and, unlike keying off closedness, it survives `open_enums_in` flipping
+    // and, unlike keying off closedness, it survives an enum-type override flipping
     // a proto2 enum's `enum_type` to OPEN (the declared default must not
     // change with the representation). Only a hand-built descriptor that
     // protoc would reject (open enum, non-zero first value) can observe a

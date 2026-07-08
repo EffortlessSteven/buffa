@@ -163,7 +163,7 @@ pub(crate) fn reflect_owned_impls(
                 ),
                 Type::TYPE_ENUM => {
                     // Closed enums compare against the type default (which
-                    // need not be zero); enums opened by `open_enums_in` keep
+                    // need not be zero); enums opened by an enum-type override keep
                     // their declared default the same way.
                     let has_val = if is_closed_enum(&f_features) {
                         quote! { self.#id != ::core::default::Default::default() }

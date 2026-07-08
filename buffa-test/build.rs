@@ -396,11 +396,16 @@ fn main() {
     // descriptor (features.enum_type = OPEN), which flows into the embedded
     // reflection pool — so descriptor-driven dynamic JSON agrees with the
     // generated `EnumValue<E>` representation instead of rejecting unknown
-    // values as a closed enum would.
+    // values as a closed enum would. Uses the generic `override_feature_in`
+    // entry point directly (the other open-enum fixtures use the
+    // `open_enums_in` sugar).
     buffa_build::Config::new()
         .files(&["protos/open_enums_enum_rule.proto"])
         .includes(&["protos/"])
-        .open_enums_in(&[".test.openenums_enumrule.Level"])
+        .override_feature_in(
+            ".test.openenums_enumrule.Level",
+            buffa_build::FeatureOverride::EnumType(buffa_build::EnumTypeOverride::Open),
+        )
         .generate_json(true)
         .reflect_mode(buffa_build::ReflectMode::VTable)
         .compile()

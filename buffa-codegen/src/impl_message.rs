@@ -1181,7 +1181,7 @@ fn scalar_clear_stmt(
         return Ok(quote! { self.#ident = #default_expr; });
     }
 
-    // A closed enum opened by `open_enums_in` keeps its declared (first-value)
+    // A closed enum opened by an enum-type override keeps its declared (first-value)
     // default, which differs from `EnumValue::default()` when non-zero.
     if let Some(default_expr) = crate::defaults::open_enum_bare_default_value(
         field,

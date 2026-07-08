@@ -35,9 +35,9 @@ use crate::generated::descriptor::FieldDescriptorProto;
 /// legal editions input can never carry a field-level `enum_type` (it targets
 /// files and enums only, so protoc rejects it on a field), which makes the
 /// slot the carrier for field-scoped
-/// [`open_enums_in`](crate::CodeGenConfig::open_enums_in) overrides injected
-/// by the [`open_enums`](crate::open_enums) preprocessing pass — those must
-/// win over the referenced enum's closedness. Only the `OPEN` value is
+/// [`FeatureOverride::EnumType`](crate::FeatureOverride) rules injected
+/// by the [`feature_overrides`](crate::feature_overrides) preprocessing pass
+/// — those must win over the referenced enum's closedness. Only the `OPEN` value is
 /// honored (the only value the pass injects); any other stray field-level
 /// `enum_type` from a foreign descriptor set is ignored by the overlay,
 /// preserving the referenced enum's semantics.

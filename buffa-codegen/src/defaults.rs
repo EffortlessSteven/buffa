@@ -130,7 +130,7 @@ pub fn parse_default_value(
             // match the actual variant ident emitted in the enum definition.
             let variant_ident = crate::message::make_field_ident(default_str);
             // Closed enum fields store bare `E`; open representation (native
-            // or via `open_enums_in`) stores `EnumValue<E>`.
+            // or via an enum-type feature override) stores `EnumValue<E>`.
             if features.enum_type == crate::features::EnumType::Open {
                 quote! { ::buffa::EnumValue::Known(#ty::#variant_ident) }
             } else {
@@ -152,7 +152,7 @@ pub fn parse_default_value(
 /// originate from proto2/closed declarations — the spec pins genuinely-open
 /// enums' first value to zero, and implicit-presence fields cannot reference
 /// closed enums — so in practice this covers closed enums opened by
-/// [`open_enums_in`](crate::CodeGenConfig::open_enums_in), where the declared
+/// [`FeatureOverride::EnumType`](crate::FeatureOverride), where the declared
 /// default must survive the representation change. Returns `Ok(None)`
 /// everywhere else, so ordinary open-enum output is untouched. The required
 /// gate lives here (not in callers) so every surface that consults this —

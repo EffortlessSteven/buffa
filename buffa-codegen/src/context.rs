@@ -71,7 +71,7 @@ pub struct CodeGenContext<'a> {
     /// Map from fully-qualified enum name to its first declared value's
     /// number — the enum type's implicit default per spec. Non-zero only for
     /// closed (proto2 / editions-closed) enums; used to decide whether a bare
-    /// enum field opened by `open_enums_in` needs an explicit generated
+    /// enum field opened by an enum-type override needs an explicit generated
     /// default (`EnumValue::Known(first)` instead of the derived wire-zero).
     enum_first_value: HashMap<String, i32>,
     /// Map from fully-qualified protobuf element name to its source comment.
@@ -455,13 +455,13 @@ impl<'a> CodeGenContext<'a> {
             type_map,
             package_of,
             enum_closedness,
-            // Only consulted by `open_enums_in` default handling (a bare open
+            // Only consulted by opened-enum default handling (a bare open
             // enum can otherwise never have a non-zero first value), so the
             // walk is skipped entirely for the default configuration.
-            enum_first_value: if config.open_enums_in.is_empty() {
-                HashMap::new()
-            } else {
+            enum_first_value: if config.has_enum_type_overrides() {
                 collect_enum_first_values(files)
+            } else {
+                HashMap::new()
             },
             comment_map,
             nested_module_names,

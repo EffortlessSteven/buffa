@@ -508,7 +508,7 @@ pub(crate) fn generate_view_with_nesting(
 /// bare-stored enum field's default differs from the derived one.
 ///
 /// Views normally derive `Default`. The exception is a proto2 required
-/// closed enum field opened by `open_enums_in`: `EnumValue::default()` is
+/// closed enum field opened by an enum-type override: `EnumValue::default()` is
 /// raw wire zero, but the field's declared default is the enum's first value
 /// (or an explicit `[default = ...]`). The owned struct already gets a
 /// custom `Default`; views need the same initializer because decoders start
@@ -523,9 +523,9 @@ pub(crate) fn custom_view_default_impl(
     let ctx = scope.ctx;
 
     // The triggering condition (bare open enum with a non-wire-zero declared
-    // default) can only arise through `open_enums_in`, so the default
-    // configuration skips the per-field scan entirely.
-    if ctx.config.open_enums_in.is_empty() {
+    // default) can only arise through an enum-type feature override, so the
+    // default configuration skips the per-field scan entirely.
+    if !ctx.config.has_enum_type_overrides() {
         return Ok(None);
     }
 

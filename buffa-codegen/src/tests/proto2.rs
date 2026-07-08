@@ -180,7 +180,7 @@ fn test_proto2_enum_default_is_first_declared_variant() {
     );
 }
 
-// ── open_enums_in override tests ─────────────────────────────────────
+// ── enum_type feature-override tests ─────────────────────────────────
 
 fn proto2_open_enum_override_file(name: &str) -> FileDescriptorProto {
     let mut file = proto2_file(name);
@@ -216,7 +216,7 @@ fn proto2_open_enum_override_file(name: &str) -> FileDescriptorProto {
 }
 
 #[test]
-fn test_proto2_open_enums_in_rules_open_matching_fields() {
+fn test_proto2_open_enum_override_rules_open_matching_fields() {
     for (case, rule) in [
         ("enum_type", ".pkg.Color"),
         ("message_prefix", ".pkg.Msg"),
@@ -226,7 +226,7 @@ fn test_proto2_open_enums_in_rules_open_matching_fields() {
         let file_name = format!("p2_open_{case}.proto");
         let file = proto2_open_enum_override_file(&file_name);
         let config = CodeGenConfig {
-            open_enums_in: vec![rule.to_string()],
+            feature_overrides: open_enum_overrides(&[rule]),
             ..Default::default()
         };
 
@@ -236,20 +236,20 @@ fn test_proto2_open_enums_in_rules_open_matching_fields() {
 
         assert!(
             content.contains("pub color: ::core::option::Option<::buffa::EnumValue<Color>>"),
-            "{case} open_enums_in must open color: {content}"
+            "{case} enum override must open color: {content}"
         );
         assert!(
             content.contains("pub other: ::core::option::Option<::buffa::EnumValue<Color>>"),
-            "{case} open_enums_in must open other: {content}"
+            "{case} enum override must open other: {content}"
         );
     }
 }
 
 #[test]
-fn test_proto2_open_enums_in_field_path_only_opens_matching_field() {
+fn test_proto2_open_enum_override_field_path_only_opens_matching_field() {
     let file = proto2_open_enum_override_file("p2_open_field.proto");
     let config = CodeGenConfig {
-        open_enums_in: vec![".pkg.Msg.color".to_string()],
+        feature_overrides: open_enum_overrides(&[".pkg.Msg.color"]),
         ..Default::default()
     };
 
@@ -259,23 +259,19 @@ fn test_proto2_open_enums_in_field_path_only_opens_matching_field() {
 
     assert!(
         content.contains("pub color: ::core::option::Option<::buffa::EnumValue<Color>>"),
-        "field-specific open_enums_in must open color: {content}"
+        "field-specific enum override must open color: {content}"
     );
     assert!(
         content.contains("pub other: ::core::option::Option<Color>"),
-        "field-specific open_enums_in must not open sibling fields: {content}"
+        "field-specific override must not open sibling fields: {content}"
     );
 }
 
 #[test]
-fn test_proto2_open_enums_in_direct_config_normalizes_paths_at_match_time() {
+fn test_proto2_open_enum_override_direct_config_normalizes_paths_at_match_time() {
     let file = proto2_open_enum_override_file("p2_open_direct_normalized.proto");
     let config = CodeGenConfig {
-        open_enums_in: vec![
-            "pkg.Msg.color.".to_string(),
-            "".to_string(),
-            "...".to_string(),
-        ],
+        feature_overrides: open_enum_overrides(&["pkg.Msg.color.", "", "..."]),
         ..Default::default()
     };
 
@@ -289,19 +285,19 @@ fn test_proto2_open_enums_in_direct_config_normalizes_paths_at_match_time() {
 
     assert!(
         content.contains("pub color: ::core::option::Option<::buffa::EnumValue<Color>>"),
-        "dotless/trailing-dot open_enums_in must match color: {content}"
+        "dotless/trailing-dot override paths must match color: {content}"
     );
     assert!(
         content.contains("pub other: ::core::option::Option<Color>"),
-        "empty/all-dot open_enums_in rules must not become catch-all: {content}"
+        "empty/all-dot override rules must not become catch-all: {content}"
     );
 }
 
 #[test]
-fn test_proto2_open_enums_in_inert_rule_warns() {
+fn test_proto2_open_enum_override_inert_rule_warns() {
     let file = proto2_open_enum_override_file("p2_open_inert.proto");
     let config = CodeGenConfig {
-        open_enums_in: vec![".pkg.Msg.color".to_string(), ".pkg.Nope".to_string()],
+        feature_overrides: open_enum_overrides(&[".pkg.Msg.color", ".pkg.Nope"]),
         ..Default::default()
     };
 
@@ -312,21 +308,21 @@ fn test_proto2_open_enums_in_inert_rule_warns() {
     assert!(
         warnings.iter().any(|w| matches!(
             w,
-            CodeGenWarning::OpenEnumRuleMatchedNothing { rule, .. } if rule == ".pkg.Nope"
+            CodeGenWarning::FeatureOverrideMatchedNothing { rule, .. } if rule == ".pkg.Nope"
         )),
-        "an inert open_enums_in rule must produce a warning: {warnings:?}"
+        "an inert override rule must produce a warning: {warnings:?}"
     );
     assert!(
         !warnings.iter().any(|w| matches!(
             w,
-            CodeGenWarning::OpenEnumRuleMatchedNothing { rule, .. } if rule == ".pkg.Msg.color"
+            CodeGenWarning::FeatureOverrideMatchedNothing { rule, .. } if rule == ".pkg.Msg.color"
         )),
         "a matched rule must not warn: {warnings:?}"
     );
 }
 
 #[test]
-fn test_proto2_open_enums_in_repeated_and_packed_repeated_fields() {
+fn test_proto2_open_enum_override_repeated_and_packed_repeated_fields() {
     let mut file = proto2_file("p2_open_repeated.proto");
     file.package = Some("pkg".to_string());
     file.enum_type.push(EnumDescriptorProto {
@@ -363,7 +359,7 @@ fn test_proto2_open_enums_in_repeated_and_packed_repeated_fields() {
         ..Default::default()
     });
     let config = CodeGenConfig {
-        open_enums_in: vec![".pkg.Color".to_string()],
+        feature_overrides: open_enum_overrides(&[".pkg.Color"]),
         ..Default::default()
     };
 
@@ -382,7 +378,7 @@ fn test_proto2_open_enums_in_repeated_and_packed_repeated_fields() {
 }
 
 #[test]
-fn test_proto2_open_enums_in_oneof_variant() {
+fn test_proto2_open_enum_override_oneof_variant() {
     let mut file = proto2_file("p2_open_oneof.proto");
     file.package = Some("pkg".to_string());
     file.enum_type.push(EnumDescriptorProto {
@@ -408,7 +404,7 @@ fn test_proto2_open_enums_in_oneof_variant() {
         ..Default::default()
     });
     let config = CodeGenConfig {
-        open_enums_in: vec![".pkg.Msg.color".to_string()],
+        feature_overrides: open_enum_overrides(&[".pkg.Msg.color"]),
         ..Default::default()
     };
 
@@ -423,7 +419,7 @@ fn test_proto2_open_enums_in_oneof_variant() {
 }
 
 #[test]
-fn test_proto2_open_enums_in_map_value_uses_outer_field_path() {
+fn test_proto2_open_enum_override_map_value_uses_outer_field_path() {
     let mut file = proto2_file("p2_open_map.proto");
     file.package = Some("pkg".to_string());
     file.enum_type.push(EnumDescriptorProto {
@@ -466,7 +462,7 @@ fn test_proto2_open_enums_in_map_value_uses_outer_field_path() {
         ..Default::default()
     });
     let config = CodeGenConfig {
-        open_enums_in: vec![".pkg.Msg.colors".to_string()],
+        feature_overrides: open_enum_overrides(&[".pkg.Msg.colors"]),
         ..Default::default()
     };
 
@@ -485,7 +481,7 @@ fn test_proto2_open_enums_in_map_value_uses_outer_field_path() {
 }
 
 #[test]
-fn test_proto2_open_enums_in_required_enum_default_uses_enum_value() {
+fn test_proto2_open_enum_override_required_enum_default_uses_enum_value() {
     let mut file = proto2_file("p2_open_required_default.proto");
     file.package = Some("pkg".to_string());
     file.enum_type.push(EnumDescriptorProto {
@@ -507,7 +503,7 @@ fn test_proto2_open_enums_in_required_enum_default_uses_enum_value() {
         ..Default::default()
     });
     let config = CodeGenConfig {
-        open_enums_in: vec![".".to_string()],
+        feature_overrides: open_enum_overrides(&["."]),
         ..Default::default()
     };
 
@@ -530,7 +526,7 @@ fn test_proto2_open_enums_in_required_enum_default_uses_enum_value() {
 }
 
 #[test]
-fn test_proto2_open_enums_in_required_enum_implicit_default_uses_enum_default() {
+fn test_proto2_open_enum_override_required_enum_implicit_default_uses_enum_default() {
     let mut file = proto2_file("p2_open_required_implicit_default.proto");
     file.package = Some("pkg".to_string());
     file.enum_type.push(EnumDescriptorProto {
@@ -551,7 +547,7 @@ fn test_proto2_open_enums_in_required_enum_implicit_default_uses_enum_default() 
         ..Default::default()
     });
     let config = CodeGenConfig {
-        open_enums_in: vec![".".to_string()],
+        feature_overrides: open_enum_overrides(&["."]),
         ..Default::default()
     };
 

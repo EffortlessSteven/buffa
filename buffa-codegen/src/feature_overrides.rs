@@ -1,52 +1,101 @@
-//! `open_enums_in`: descriptor feature injection for closed-enum overrides.
+//! Path-scoped editions feature overrides via descriptor feature injection.
 //!
-//! The option is implemented as a preprocessing pass over the parsed
-//! descriptor set, run once before [`CodeGenContext`](crate::context)
-//! construction. Matching enums receive `features.enum_type = OPEN` on their
-//! own descriptor (the same construct protoc's proto2 → editions migration
-//! emits), and matching fields receive a field-level `features.enum_type =
-//! OPEN` override. Everything downstream — struct field types, decoders,
-//! JSON, text format, reflection, the embedded descriptor pool — resolves
-//! features from the mutated descriptors, so no per-call-site configuration
-//! lookup exists anywhere in the generation paths.
+//! [`CodeGenConfig::feature_overrides`](crate::CodeGenConfig::feature_overrides)
+//! is implemented as a preprocessing pass over the parsed descriptor set, run
+//! once before [`CodeGenContext`](crate::context) construction. Each
+//! [`FeatureOverride`] writes its feature slot into the matched descriptors,
+//! and everything downstream — struct field types, decoders, JSON, text
+//! format, reflection, the embedded descriptor pool — resolves features from
+//! the mutated set, so no per-call-site configuration lookup exists anywhere
+//! in the generation paths. The supported override set is the
+//! [`FeatureOverride`] enum itself: a variant is added only once codegen
+//! handles the descriptor states it can create.
 //!
-//! Field-level `enum_type` is not a legal editions target (protoc rejects
-//! it), so it can never appear in real input; it is used here purely as the
-//! carrier for field-scoped overrides, honored by the carve-out in
-//! [`features::resolve_field`](crate::features::resolve_field). Because the
-//! mutated set is also what [`encode_fds_once`](crate::reflect::encode_fds_once)
-//! embeds, an *enum-level* rule flows all the way to runtime: the embedded
-//! pool reports the enum open and descriptor-driven dynamic codecs agree
-//! with the generated types (a fully spec-valid descriptor). A *field-level*
-//! rule is codegen-only: the runtime pool reads closedness from the enum
-//! descriptor, so descriptor-driven codecs keep closed semantics for that
-//! enum — the documented trade for field-scoped granularity.
+//! For [`FeatureOverride::EnumType`]: matching enums receive
+//! `features.enum_type = OPEN` on their own descriptor (the same construct
+//! protoc's proto2 → editions migration emits), and matching fields receive
+//! a field-level override. Field-level `enum_type` is not a legal editions
+//! target (protoc rejects it), so it can never appear in real input; it is
+//! used purely as the carrier for field-scoped overrides, honored by the
+//! carve-out in [`features::resolve_field`](crate::features::resolve_field).
+//! Because the mutated set is also what
+//! [`encode_fds_once`](crate::reflect::encode_fds_once) embeds, an
+//! *enum-level* rule flows all the way to runtime: the embedded pool reports
+//! the enum open and descriptor-driven dynamic codecs agree with the
+//! generated types (a fully spec-valid descriptor). A *field-level* rule is
+//! codegen-only: the runtime pool reads closedness from the enum descriptor,
+//! so descriptor-driven codecs keep closed semantics for that enum — the
+//! documented trade for field-scoped granularity.
 
 use crate::context::matches_proto_prefix;
 use crate::generated::descriptor::field_descriptor_proto::Type;
 use crate::generated::descriptor::{
     feature_set, DescriptorProto, EnumDescriptorProto, FieldDescriptorProto, FileDescriptorProto,
 };
+use crate::{EnumTypeOverride, FeatureOverride};
 
-/// The result of applying `open_enums_in` rules: the mutated descriptor set,
+/// The result of applying feature overrides: the mutated descriptor set,
 /// plus any rules that matched nothing (surfaced as
-/// [`CodeGenWarning::OpenEnumRuleMatchedNothing`](crate::CodeGenWarning) —
-/// a silently inert rule means the affected fields keep the closed-enum
-/// semantics the user was opting out of).
-pub(crate) struct AppliedOpenEnumOverrides {
+/// [`CodeGenWarning::FeatureOverrideMatchedNothing`](crate::CodeGenWarning) —
+/// a silently inert rule means the affected paths keep the semantics the
+/// user was opting out of).
+pub(crate) struct AppliedFeatureOverrides {
     pub(crate) files: Vec<FileDescriptorProto>,
-    pub(crate) unmatched_rules: Vec<String>,
+    /// `(path, override)` pairs that matched nothing.
+    pub(crate) unmatched: Vec<(String, FeatureOverride)>,
 }
 
-/// Apply `open_enums_in` rules to a descriptor set, returning the mutated
-/// copy, or `None` when no rules are configured (the common case — callers
-/// keep using the borrowed input, so the default path never clones).
-pub(crate) fn apply_open_enum_overrides(
+/// Apply configured feature overrides to a descriptor set, returning the
+/// mutated copy, or `None` when none are configured (the common case —
+/// callers keep using the borrowed input, so the default path never clones).
+pub(crate) fn apply_feature_overrides(
     files: &[FileDescriptorProto],
-    rules: &[String],
-) -> Option<AppliedOpenEnumOverrides> {
-    if rules.is_empty() {
+    overrides: &[(String, FeatureOverride)],
+) -> Option<AppliedFeatureOverrides> {
+    if overrides.is_empty() {
         return None;
+    }
+
+    // Partition by override kind, keeping each rule's index into `overrides`
+    // so unmatched reporting maps back to the caller's entries. Today the
+    // only kind is EnumType(Open); future kinds add their own partition and
+    // walker below.
+    let mut enum_open_paths: Vec<String> = Vec::new();
+    let mut enum_open_idx: Vec<usize> = Vec::new();
+    for (i, (path, ovr)) in overrides.iter().enumerate() {
+        match ovr {
+            FeatureOverride::EnumType(EnumTypeOverride::Open) => {
+                enum_open_paths.push(path.clone());
+                enum_open_idx.push(i);
+            }
+        }
+    }
+
+    let mut matched = vec![false; overrides.len()];
+    let mut files = files.to_vec();
+    apply_open_enum_rules(&mut files, &enum_open_paths, &enum_open_idx, &mut matched);
+
+    let unmatched = overrides
+        .iter()
+        .zip(&matched)
+        .filter(|(_, m)| !**m)
+        .map(|((path, ovr), _)| (path.clone(), *ovr))
+        .collect();
+    Some(AppliedFeatureOverrides { files, unmatched })
+}
+
+/// Apply `EnumType(Open)` rules: mutate matched enums' descriptors and
+/// inject field-level carriers for field-scoped matches. `idx_map` maps each
+/// rule's position in `rules` back to the caller's override index for
+/// `matched` bookkeeping.
+fn apply_open_enum_rules(
+    files: &mut [FileDescriptorProto],
+    rules: &[String],
+    idx_map: &[usize],
+    overall_matched: &mut [bool],
+) {
+    if rules.is_empty() {
+        return;
     }
 
     // Enum FQNs present in this compilation set. Rules naming an enum that
@@ -54,7 +103,7 @@ pub(crate) fn apply_open_enum_overrides(
     // field whose enum is absent (extern_path) fall back to a field-level
     // override so the field representation still opens.
     let mut local_enums = std::collections::HashSet::new();
-    for file in files {
+    for file in files.iter() {
         let prefix = package_prefix(file.package.as_deref());
         for e in &file.enum_type {
             collect_enum_fqn(&mut local_enums, &prefix, e);
@@ -65,8 +114,7 @@ pub(crate) fn apply_open_enum_overrides(
     }
 
     let mut matched = vec![false; rules.len()];
-    let mut files = files.to_vec();
-    for file in &mut files {
+    for file in files.iter_mut() {
         let prefix = package_prefix(file.package.as_deref());
         for e in &mut file.enum_type {
             open_enum_if_matched(e, &prefix, rules, &mut matched);
@@ -76,16 +124,11 @@ pub(crate) fn apply_open_enum_overrides(
         }
     }
 
-    let unmatched_rules = rules
-        .iter()
-        .zip(&matched)
-        .filter(|(_, m)| !**m)
-        .map(|(rule, _)| rule.clone())
-        .collect();
-    Some(AppliedOpenEnumOverrides {
-        files,
-        unmatched_rules,
-    })
+    for (rule_i, &overall_i) in idx_map.iter().enumerate() {
+        if matched[rule_i] {
+            overall_matched[overall_i] = true;
+        }
+    }
 }
 
 /// `".pkg"` → `".pkg."`; empty package → `"."`.
@@ -278,6 +321,27 @@ mod tests {
     use super::*;
     use crate::generated::descriptor::field_descriptor_proto::Label;
 
+    /// Wrap paths as `EnumType(Open)` overrides — the shape every test uses.
+    fn open_enums(paths: &[&str]) -> Vec<(String, FeatureOverride)> {
+        paths
+            .iter()
+            .map(|p| {
+                (
+                    (*p).to_string(),
+                    FeatureOverride::EnumType(EnumTypeOverride::Open),
+                )
+            })
+            .collect()
+    }
+
+    fn unmatched_paths(applied: &AppliedFeatureOverrides) -> Vec<String> {
+        applied
+            .unmatched
+            .iter()
+            .map(|(path, _)| path.clone())
+            .collect()
+    }
+
     fn enum_desc(name: &str) -> EnumDescriptorProto {
         EnumDescriptorProto {
             name: Some(name.to_string()),
@@ -329,13 +393,13 @@ mod tests {
 
     #[test]
     fn no_rules_returns_none() {
-        assert!(apply_open_enum_overrides(&[test_file()], &[]).is_none());
+        assert!(apply_feature_overrides(&[test_file()], &[]).is_none());
     }
 
     #[test]
     fn enum_rule_mutates_enum_not_fields() {
-        let applied = apply_open_enum_overrides(&[test_file()], &[".p.E".to_string()]).unwrap();
-        assert!(applied.unmatched_rules.is_empty());
+        let applied = apply_feature_overrides(&[test_file()], &open_enums(&[".p.E"])).unwrap();
+        assert!(applied.unmatched.is_empty());
         let e = &applied.files[0].enum_type[0];
         assert_eq!(
             e.options
@@ -354,8 +418,8 @@ mod tests {
 
     #[test]
     fn field_rule_mutates_only_that_field() {
-        let applied = apply_open_enum_overrides(&[test_file()], &[".p.M.a".to_string()]).unwrap();
-        assert!(applied.unmatched_rules.is_empty());
+        let applied = apply_feature_overrides(&[test_file()], &open_enums(&[".p.M.a"])).unwrap();
+        assert!(applied.unmatched.is_empty());
         let msg = &applied.files[0].message_type[0];
         assert_eq!(
             field_enum_type(&msg.field[0]),
@@ -370,8 +434,8 @@ mod tests {
         // `.other.Ext` is not declared in the set, so an enum-type rule can
         // only take effect through the referencing field.
         let applied =
-            apply_open_enum_overrides(&[test_file()], &[".other.Ext".to_string()]).unwrap();
-        assert!(applied.unmatched_rules.is_empty());
+            apply_feature_overrides(&[test_file()], &open_enums(&[".other.Ext"])).unwrap();
+        assert!(applied.unmatched.is_empty());
         let msg = &applied.files[0].message_type[0];
         assert_eq!(field_enum_type(&msg.field[0]), None);
         assert_eq!(
@@ -382,17 +446,13 @@ mod tests {
 
     #[test]
     fn inert_rules_are_reported_unmatched() {
-        let applied = apply_open_enum_overrides(
+        let applied = apply_feature_overrides(
             &[test_file()],
-            &[
-                ".p.M.a".to_string(),
-                ".p.Missing".to_string(),
-                ".p.M.a.typo".to_string(),
-            ],
+            &open_enums(&[".p.M.a", ".p.Missing", ".p.M.a.typo"]),
         )
         .unwrap();
         assert_eq!(
-            applied.unmatched_rules,
+            unmatched_paths(&applied),
             vec![".p.Missing".to_string(), ".p.M.a.typo".to_string()]
         );
     }
@@ -401,8 +461,8 @@ mod tests {
     fn broad_prefix_skips_redundant_field_injection() {
         // `.p` matches both the enum and every field path; the enum-level
         // mutation is sufficient, so no field-level features are injected.
-        let applied = apply_open_enum_overrides(&[test_file()], &[".p".to_string()]).unwrap();
-        assert!(applied.unmatched_rules.is_empty());
+        let applied = apply_feature_overrides(&[test_file()], &open_enums(&[".p"])).unwrap();
+        assert!(applied.unmatched.is_empty());
         let file = &applied.files[0];
         assert_eq!(
             file.enum_type[0]
@@ -435,8 +495,8 @@ mod tests {
             }],
             ..Default::default()
         };
-        let applied = apply_open_enum_overrides(&[file], &[".Outer.Inner".to_string()]).unwrap();
-        assert!(applied.unmatched_rules.is_empty());
+        let applied = apply_feature_overrides(&[file], &open_enums(&[".Outer.Inner"])).unwrap();
+        assert!(applied.unmatched.is_empty());
         assert_eq!(
             applied.files[0].message_type[0].enum_type[0]
                 .options

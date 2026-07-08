@@ -2449,15 +2449,15 @@ fn generate_custom_default(
     nesting: usize,
 ) -> Result<Option<TokenStream>, CodeGenError> {
     // Custom defaults only apply when field presence is explicit (proto2,
-    // or editions with explicit presence). With `open_enums_in` configured,
+    // or editions with explicit presence). With enum-type overrides configured,
     // a required opened enum field can need a custom default even inside an
     // implicit-presence file (editions LEGACY_REQUIRED), so the message-level
     // check is only a fast path — the per-field logic below decides. The
     // `presence_explicit` guard on the `default_value` arm keeps output for
-    // implicit-presence messages identical to the pre-`open_enums_in`
+    // implicit-presence messages identical to the pre-override
     // behavior unless a rule actually opens one of their fields.
     let presence_explicit = features.field_presence == crate::features::FieldPresence::Explicit;
-    if !presence_explicit && ctx.config.open_enums_in.is_empty() {
+    if !presence_explicit && !ctx.config.has_enum_type_overrides() {
         return Ok(None);
     }
 
@@ -2482,7 +2482,7 @@ fn generate_custom_default(
                 .default_value
                 .as_deref()
                 .is_some_and(|s| !s.is_empty()))
-            || (!ctx.config.open_enums_in.is_empty()
+            || (ctx.config.has_enum_type_overrides()
                 && crate::defaults::open_enum_bare_default_value(
                     field,
                     ctx,
@@ -2528,7 +2528,7 @@ fn generate_custom_default(
 
         // Default-value parsing needs the *field-resolved* features: the
         // enum arm's `EnumValue` wrapping keys off the referenced enum's
-        // (possibly `open_enums_in`-overridden) openness.
+        // (possibly override-opened) openness.
         let field_features = crate::features::resolve_field(ctx, field, features);
         if let Some(expr) = parse_default_value(
             field,
