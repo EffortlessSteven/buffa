@@ -930,6 +930,31 @@ pub struct CodeGenConfig {
     /// scalar/string/bytes/message rules and substituted into the collection
     /// template.
     pub repeated_fields: Vec<(String, RepeatedRepr)>,
+    /// Fully-qualified proto path prefixes whose closed enum fields should use
+    /// the open enum representation.
+    ///
+    /// Matching enum fields generate as `EnumValue<E>` instead of `E`, making
+    /// unknown wire values directly visible as `EnumValue::Unknown(n)`. This is
+    /// a deliberate codegen-only override of closed-enum field representation:
+    /// for matching fields, an unknown value makes the field read as present
+    /// instead of unset with the raw value represented through unknown fields.
+    ///
+    /// Paths are matched with the same proto-segment-aware logic as
+    /// [`bytes_fields`](Self::bytes_fields). A rule may name an enum type
+    /// (`".my.pkg.E"`), a field (`".my.pkg.Msg.e"`), a package/message prefix,
+    /// or `"."` for every enum field. Leading dots are optional, trailing dots
+    /// are ignored, and blank/malformed all-dot entries match nothing. Map enum
+    /// values match the outer map field path; oneof enum variants match the
+    /// direct field path. Prefixes are applied to both the field path and
+    /// referenced enum type path; use an individual field path when the override
+    /// should be location-scoped only.
+    ///
+    /// This does not mutate descriptors. Generated serde JSON uses open-enum
+    /// numeric handling for matching fields, while descriptor-driven dynamic JSON
+    /// still follows the descriptor's closed-enum semantics. The default is empty,
+    /// so generated output and closed-enum semantics are unchanged unless
+    /// configured.
+    pub open_enums_in: Vec<String>,
     /// Fully-qualified proto paths whose message-typed oneof variants should
     /// **not** be wrapped in `Box<T>`. By default every message/group oneof
     /// variant is boxed (so recursive types compile); entries here opt matching
@@ -1347,6 +1372,7 @@ impl Default for CodeGenConfig {
             map_fields: Vec::new(),
             pointer_fields: Vec::new(),
             repeated_fields: Vec::new(),
+            open_enums_in: Vec::new(),
             unboxed_oneof_fields: Vec::new(),
             strict_utf8_mapping: false,
             allow_message_set: false,
@@ -1803,7 +1829,8 @@ fn collect_custom_elements(
                     continue;
                 }
 
-                let field_features = crate::features::resolve_field(ctx, field, &msg_features);
+                let field_features =
+                    crate::features::resolve_field(ctx, field, &msg_features, Some(&field_fqn));
                 let ty = crate::impl_message::effective_type(ctx, field, &field_features);
                 match ty {
                     Type::TYPE_STRING => {
@@ -2515,12 +2542,9 @@ fn generate_package(
         }
         ctx.truncate_warnings(warn_mark);
         occupied.insert("register_types".to_string());
-        // The reflection pool accessor is re-exported at the package root
-        // directly by `generate_package_mod` (not via a ReexportCandidate),
-        // so the dry run doesn't capture it — reserve it explicitly.
-        if ctx.config.generate_reflection {
-            occupied.insert("descriptor_pool".to_string());
-        }
+        // The reflect re-export names (`descriptor_pool`,
+        // `FILE_DESCRIPTOR_SET_BYTES`) are reserved inside
+        // `root_occupied_names` itself.
         let collected = ctx.imports_take_collected();
         ctx.imports_set_resolving(imports::RootImports::assign(&collected, &occupied));
     }
@@ -2667,6 +2691,16 @@ fn root_occupied_names(
                     .prefixed_type_name(e.name.as_deref().unwrap_or("")),
             );
         }
+    }
+    // The reflect surface is re-exported at the package root directly by
+    // `generate_package_mod` (not via a `ReexportCandidate`), so candidates
+    // that could share its names — an extension const named
+    // `file_descriptor_set_bytes` becomes `FILE_DESCRIPTOR_SET_BYTES` —
+    // must be filtered against it here or the two `pub use`s collide
+    // (E0252) in the generated package root.
+    if ctx.config.generate_reflection {
+        occupied.insert("descriptor_pool".to_string());
+        occupied.insert("FILE_DESCRIPTOR_SET_BYTES".to_string());
     }
     occupied
 }
@@ -2869,14 +2903,15 @@ fn generate_package_mod(
     // Reflection: embed the FileDescriptorSet bytes and a lazy pool
     // accessor so per-message `Reflectable` impls have a descriptor pool to
     // resolve against. Lives inside `__buffa` so the impls can reach it via
-    // a relative `__buffa::reflect::descriptor_pool()` path. A package-root
-    // `pub use` re-exports `descriptor_pool` so consumers don't have to
-    // route through the reserved `__buffa` sentinel.
+    // a relative `__buffa::reflect::descriptor_pool()` path. Package-root
+    // `pub use`s re-export `descriptor_pool` and `FILE_DESCRIPTOR_SET_BYTES`
+    // so consumers don't have to route through the reserved `__buffa`
+    // sentinel.
     let (reflect_mod, reflect_reexport) = if ctx.config.generate_reflection {
         let gate = ctx.config.feature_gates().reflect;
         (
             feature_gates::cfg_block(reflect::reflect_pool_module(fds_bytes), gate),
-            feature_gates::cfg_block(reflect::pool_accessor_reexport(&quote! { __buffa }), gate),
+            reflect::reflect_reexports(&quote! { __buffa }, gate),
         )
     } else {
         (TokenStream::new(), TokenStream::new())

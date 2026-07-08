@@ -544,6 +544,10 @@ pub mod collisions {
     buffa::include_proto!("test.collisions");
 }
 
+pub mod reflectcollide {
+    buffa::include_proto!("reflectcollide");
+}
+
 #[allow(clippy::derivable_impls, clippy::match_single_binding, dead_code)]
 pub mod prelude_shadow {
     buffa::include_proto!("test.prelude_shadow");
@@ -612,6 +616,27 @@ pub mod modrace {
 )]
 pub mod proto2 {
     buffa::include_proto!("test.proto2");
+}
+
+/// `open_enums_in` fixture: selected proto2 closed enum fields use
+/// `EnumValue<E>` while the control field keeps closed-enum semantics.
+#[allow(
+    clippy::derivable_impls,
+    clippy::match_single_binding,
+    non_camel_case_types
+)]
+pub mod open_enums {
+    buffa::include_proto!("test.openenums");
+}
+
+/// `open_enums_in` fixture with unknown-field preservation disabled.
+#[allow(
+    clippy::derivable_impls,
+    clippy::match_single_binding,
+    non_camel_case_types
+)]
+pub mod open_enums_no_unknowns {
+    buffa::include_proto!("test.openenums_nounknowns");
 }
 
 // Mixed-mode reflection fixtures: bridge-mode dependency, vtable-mode parent
